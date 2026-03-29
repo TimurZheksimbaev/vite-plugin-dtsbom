@@ -31,6 +31,8 @@ yarn add -D vite-plugin-dtsbom
 pnpm add -D vite-plugin-dtsbom
 ```
 
+**Peer dependency:** в проекте должен быть установлен **Vite 4–8** (см. `peerDependencies` в `package.json`). Если раньше `npm install` ругался на peer deps и помогал только `--legacy-peer-deps`, чаще всего причина в том, что в приложении стоял **Vite 7/8**, а в старой версии плагина в peer были только 4–6 — обнови плагин до **≥1.0.1**.
+
 ## Использование
 
 ### Базовое использование
