@@ -60,12 +60,11 @@ function countBySeverity(vulns: VulnInfo[]): Record<VulnInfo['severity'], number
   return counts;
 }
 
-function repoLink(dep: Dependency): string {
-  const url = dep.repository?.replace(/^git\+/, '').replace(/\.git$/, '')
-    || dep.homepage;
+function repoIconLink(dep: Dependency): string {
+  const url = dep.homepage
+    || dep.repository?.replace(/^git\+/, '').replace(/\.git$/, '');
   if (!url) return '';
-  const label = dep.homepage ? dep.homepage : url;
-  return `<a href="${esc(url)}" target="_blank" rel="noreferrer">${esc(label)}</a>`;
+  return ` <a href="${esc(url)}" target="_blank" rel="noreferrer" class="pkg-link" title="${esc(url)}">↗</a>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,14 +126,13 @@ function renderPackagesTable(deps: Dependency[]): string {
       ? `<code class="license">${esc(dep.license)}</code>`
       : `<span class="na">—</span>`;
 
-    const link = repoLink(dep);
+    const iconLink = repoIconLink(dep);
 
     return `
       <tr class="${vulnCount ? 'row--vuln' : ''}">
-        <td><strong>${esc(dep.name)}</strong>${dep.description ? `<br><small>${esc(dep.description.slice(0, 80))}${dep.description.length > 80 ? '…' : ''}</small>` : ''}</td>
+        <td><strong>${esc(dep.name)}</strong>${iconLink}${dep.description ? `<br><small>${esc(dep.description.slice(0, 72))}${dep.description.length > 72 ? '…' : ''}</small>` : ''}</td>
         <td><code>${esc(dep.version)}</code></td>
         <td>${licenseCell}</td>
-        <td>${link || '<span class="na">—</span>'}</td>
         <td>${vulnCell}</td>
       </tr>`;
   }).join('');
@@ -144,12 +142,17 @@ function renderPackagesTable(deps: Dependency[]): string {
     <h2>Packages <span class="count">(${deps.length})</span></h2>
     <div class="table-wrap">
       <table>
+        <colgroup>
+          <col style="width:52%">
+          <col style="width:16%">
+          <col style="width:16%">
+          <col style="width:16%">
+        </colgroup>
         <thead>
           <tr>
             <th>Package</th>
             <th>Version</th>
             <th>License</th>
-            <th>Homepage</th>
             <th>Vulnerabilities</th>
           </tr>
         </thead>
@@ -265,9 +268,9 @@ const CSS = `
   .site-header .meta span { margin-right: 16px; }
 
   /* ── Layout ── */
-  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .container { max-width: 1400px; margin: 0 auto; padding: 0 40px; }
 
-  section { margin-bottom: 40px; }
+  section { margin-bottom: 48px; }
   section h2 {
     font-size: 1.1rem;
     font-weight: 700;
@@ -303,12 +306,12 @@ const CSS = `
   .card--low      .card-value { color: #15803d; }
 
   /* ── Table ── */
-  .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
-  table { width: 100%; border-collapse: collapse; background: #fff; }
+  .table-wrap { border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  table { width: 100%; border-collapse: collapse; background: #fff; table-layout: fixed; }
   thead { background: #f1f5f9; }
-  th { padding: 10px 14px; text-align: left; font-size: 0.78rem; text-transform: uppercase; letter-spacing: .5px; color: #475569; white-space: nowrap; }
-  td { padding: 10px 14px; border-top: 1px solid #f1f5f9; vertical-align: top; }
-  td small { color: #64748b; display: block; margin-top: 2px; }
+  th { padding: 12px 18px; text-align: left; font-size: 0.78rem; text-transform: uppercase; letter-spacing: .5px; color: #475569; white-space: nowrap; }
+  td { padding: 12px 18px; border-top: 1px solid #f1f5f9; vertical-align: top; word-break: break-word; }
+  td small { color: #64748b; display: block; margin-top: 3px; font-size: 0.82em; }
   tr.row--vuln { background: #fffbeb; }
   tr.row--vuln:hover { background: #fef9c3; }
   tr:not(.row--vuln):hover td { background: #f8fafc; }
@@ -317,6 +320,8 @@ const CSS = `
   .safe { color: #15803d; font-weight: 600; }
   .vuln-count { font-weight: 700; }
   .na { color: #94a3b8; }
+  .pkg-link { font-size: 0.85em; margin-left: 4px; color: #64748b; vertical-align: middle; }
+  .pkg-link:hover { color: #2563eb; }
 
   /* ── Severity badge ── */
   .badge {

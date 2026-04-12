@@ -1,0 +1,66 @@
+name: Publish to npm
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+
+# Prevent concurrent runs from stepping on each other
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Bump version & publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to push the version bump commit
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Use a token so the pushed commit can trigger other workflows if needed,
+          # and so branch protection rules that require PRs don't block a bot push.
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump patch version
+        id: version
+        run: |
+          # --no-git-tag-version: we commit manually so we can add [skip ci]
+          NEW_VERSION=$(npm version patch --no-git-tag-version)
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Commit & push version bump
+        run: |
+          git add package.json
+          git commit -m "chore: release ${{ steps.version.outputs.new_version }} [skip ci]"
+          git tag ${{ steps.version.outputs.new_version }}
+          git push origin main --follow-tags
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
