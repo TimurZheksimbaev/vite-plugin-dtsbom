@@ -5,11 +5,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/timurzeksimbaev/vite-plugin-dtsbom.git"
+    "url": "git+https://github.com/TimurZheksimbaev/vite-plugin-dtsbom.git"
   },
-  "homepage": "https://github.com/timurzeksimbaev/vite-plugin-dtsbom#readme",
+  "homepage": "https://github.com/TimurZheksimbaev/vite-plugin-dtsbom#readme",
   "bugs": {
-    "url": "https://github.com/timurzeksimbaev/vite-plugin-dtsbom/issues"
+    "url": "https://github.com/TimurZheksimbaev/vite-plugin-dtsbom/issues"
   },
   "description": "Vite plugin for generating SBOM (Software Bill of Materials) in SPDX and CycloneDX formats",
   "type": "module",
