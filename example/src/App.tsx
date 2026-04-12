@@ -66,7 +66,7 @@ export function App(): React.JSX.Element {
       <h1>Vite + SBOM — много зависимостей</h1>
       <p>
         Собрано с: axios, zod, date-fns, lodash-es, nanoid, clsx + react. После{' '}
-        <code>npm run build</code> смотри <code>dist/sbom.*.json</code>.
+        <code>npm run build</code> смотри <code>dist/sbom.*.json</code>.a
       </p>
       <p className="meta">
         {demo.label} · <code>{demo.id}</code> · <code>{demo.uid}</code>
