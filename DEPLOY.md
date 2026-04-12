@@ -1,7 +1,7 @@
 # GitHub и публикация в npm
 
 ## 1. Репозиторий на GitHub
-
+фыва
 1. Создай новый репозиторий на [github.com/new](https://github.com/new), например `vite-plugin-dtsbom` (без README, если уже есть локальный коммит).
 2. Если имя пользователя на GitHub другое — поправь поля `repository`, `homepage` и `bugs` в `package.json`.
 3. Привяжи remote и запушь:
