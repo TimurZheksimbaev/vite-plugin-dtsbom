@@ -2,6 +2,7 @@ import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { PackageInfo, Dependency } from './types.js';
+import { fetchVulnerabilitiesBatch, type FetchVulnOptions } from './vuln-fetcher.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -53,12 +54,10 @@ export function collectDependencies(
 }
 
 function normalizeVersion(version: string): string {
-  // Remove version prefixes like ^, ~, >=, etc.
   return version.replace(/^[\^~>=<]+/, '');
 }
 
 export function getLicenseInfo(packageName: string, root: string): string | undefined {
-  // Try to read license from node_modules
   const nodeModulesPath = join(root, 'node_modules', packageName, 'package.json');
   
   if (existsSync(nodeModulesPath)) {
@@ -77,12 +76,11 @@ export function getLicenseInfo(packageName: string, root: string): string | unde
 }
 
 export function generateSPDXId(name: string): string {
-  // SPDX IDs must be valid identifiers
   return name.replace(/[^a-zA-Z0-9.-]/g, '-').replace(/^-+|-+$/g, '');
 }
 
 /**
- * Parse node_modules directory to collect all installed packages
+ * Parse node_modules directory to collect all installed packages with full metadata.
  */
 export function scanNodeModules(
   root: string,
@@ -96,7 +94,6 @@ export function scanNodeModules(
   }
 
   function scanDirectory(dir: string, depth: number = 0): void {
-    // Limit depth to avoid infinite recursion and skip scoped packages nested too deep
     if (depth > 10) {
       return;
     }
@@ -108,54 +105,66 @@ export function scanNodeModules(
         const fullPath = join(dir, entry.name);
 
         if (entry.isDirectory()) {
-          // Check if this directory contains a package.json
           const packageJsonPath = join(fullPath, 'package.json');
           
           if (existsSync(packageJsonPath)) {
             try {
               const content = readFileSync(packageJsonPath, 'utf-8');
-              const pkg = JSON.parse(content);
+              const pkg = JSON.parse(content) as {
+                name?: string;
+                version?: string;
+                description?: string;
+                license?: string | { type?: string };
+                author?: string | { name?: string; email?: string; url?: string };
+                homepage?: string;
+                repository?: string | { url?: string };
+                keywords?: string[];
+              };
               
-              if (pkg.name && pkg.version) {
-                // Skip if already processed (avoid duplicates)
-                if (!packages.has(pkg.name)) {
-                  packages.set(pkg.name, {
-                    name: pkg.name,
-                    version: pkg.version,
-                    type: 'dependencies', // Default type
-                    license: typeof pkg.license === 'string'
-                      ? pkg.license
-                      : pkg.license?.type || undefined,
-                    homepage: pkg.homepage,
-                    repository: typeof pkg.repository === 'string'
-                      ? pkg.repository
-                      : pkg.repository?.url,
-                  });
-                }
+              if (pkg.name && pkg.version && !packages.has(pkg.name)) {
+                const license =
+                  typeof pkg.license === 'string' ? pkg.license : pkg.license?.type;
+                const repository =
+                  typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url;
+                const author =
+                  typeof pkg.author === 'string'
+                    ? pkg.author
+                    : pkg.author?.name
+                      ? [pkg.author.name, pkg.author.email, pkg.author.url]
+                          .filter(Boolean)
+                          .join(' ')
+                      : undefined;
+
+                packages.set(pkg.name, {
+                  name: pkg.name,
+                  version: pkg.version,
+                  type: 'dependencies',
+                  description: pkg.description,
+                  license: license || undefined,
+                  author,
+                  homepage: pkg.homepage,
+                  repository,
+                  keywords: Array.isArray(pkg.keywords) ? pkg.keywords : undefined,
+                });
               }
 
-              // If including transitive dependencies, scan this package's node_modules
               if (includeTransitive) {
                 const nestedNodeModules = join(fullPath, 'node_modules');
                 if (existsSync(nestedNodeModules)) {
                   scanDirectory(nestedNodeModules, depth + 1);
                 }
               }
-            } catch (error) {
-              // Skip invalid package.json files
+            } catch {
               continue;
             }
           } else {
-            // If no package.json, might be a scoped package directory
-            // Continue scanning if it looks like a package name
             if (entry.name.startsWith('@')) {
               scanDirectory(fullPath, depth + 1);
             }
           }
         }
       }
-    } catch (error) {
-      // Skip directories we can't read
+    } catch {
       return;
     }
   }
@@ -165,7 +174,7 @@ export function scanNodeModules(
 }
 
 /**
- * Collect all dependencies from package.json and optionally from node_modules
+ * Collect all dependencies from package.json and optionally from node_modules.
  */
 export function collectAllDependencies(
   packageJson: PackageInfo,
@@ -178,47 +187,66 @@ export function collectAllDependencies(
 ): Dependency[] {
   const { includeDev, parseNodeModules, includeTransitive } = options;
   
-  // Start with direct dependencies from package.json
   const directDeps = collectDependencies(packageJson, includeDev);
   const allDeps = new Map<string, Dependency>();
 
-  // Add direct dependencies
   for (const dep of directDeps) {
     allDeps.set(dep.name, dep);
   }
 
-  // If parsing node_modules, add all installed packages
   if (parseNodeModules) {
     const installedPackages = scanNodeModules(root, includeTransitive);
     
     for (const [name, pkg] of installedPackages) {
-      // Merge with direct dependencies, preserving type from package.json
       if (!allDeps.has(name)) {
         allDeps.set(name, pkg);
       } else {
-        // Update with more complete information from node_modules
         const existing = allDeps.get(name)!;
         allDeps.set(name, {
           ...existing,
-          version: pkg.version, // Use actual installed version
+          version: pkg.version,
+          description: pkg.description || existing.description,
           license: pkg.license || existing.license,
+          author: pkg.author || existing.author,
           homepage: pkg.homepage || existing.homepage,
           repository: pkg.repository || existing.repository,
+          keywords: pkg.keywords || existing.keywords,
         });
       }
     }
   }
 
-  // Enrich all dependencies with license info from node_modules
   const enrichedDeps: Dependency[] = [];
   for (const dep of allDeps.values()) {
     const license = getLicenseInfo(dep.name, root) || dep.license;
-    enrichedDeps.push({
-      ...dep,
-      license,
-    });
+    enrichedDeps.push({ ...dep, license });
   }
 
   return enrichedDeps;
 }
 
+/**
+ * Enrich a list of dependencies with live vulnerability data fetched from OSV.dev.
+ * Mutates each entry in place and returns the same array for convenience.
+ *
+ * Network failures are handled gracefully — the build never fails.
+ */
+export async function enrichWithVulnerabilities(
+  deps: Dependency[],
+  opts: FetchVulnOptions = {}
+): Promise<Dependency[]> {
+  const vulnMap = await fetchVulnerabilitiesBatch(
+    deps.map(d => ({ name: d.name, version: d.version })),
+    opts
+  );
+
+  for (const dep of deps) {
+    const key = `${dep.name}@${dep.version}`;
+    const vulns = vulnMap.get(key);
+    if (vulns?.length) {
+      dep.vulnerabilities = vulns;
+    }
+  }
+
+  return deps;
+}

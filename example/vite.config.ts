@@ -8,6 +8,7 @@ export default defineConfig({
   plugins: [
     react(),
     vitePluginDtsbom({
+      // 'sbom' is the default — outside dist/ so reports never ship to production
       outputDir: 'dist',
       spdx: true,
       cyclonedx: true,

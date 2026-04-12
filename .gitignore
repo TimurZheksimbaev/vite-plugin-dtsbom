@@ -2,6 +2,9 @@ node_modules/
 dist/
 example/node_modules/
 example/dist/
+# SBOM output — generated at build time, not committed
+sbom/
+example/sbom/
 *.log
 .DS_Store
 .env

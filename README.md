@@ -1,41 +1,41 @@
 # vite-plugin-dtsbom
 
-Vite plugin для генерации SBOM (Software Bill of Materials) в форматах SPDX и CycloneDX.
+Vite-плагин для автоматической генерации **SBOM (Software Bill of Materials)** во время сборки проекта.
 
-**Исходники:** [github.com/timurzeksimbaev/vite-plugin-dtsbom](https://github.com/timurzeksimbaev/vite-plugin-dtsbom) (если форк под другим пользователем — поправь ссылку в README и в `package.json`). Публикация в npm и push на GitHub: см. [DEPLOY.md](./DEPLOY.md).
+Поддерживаемые форматы: **SPDX 2.3** и **CycloneDX 1.5**.  
+Помимо SBOM файлов плагин генерирует **HTML-отчёт** с визуализацией всех зависимостей и найденных уязвимостей, получая актуальные данные CVE из открытой базы **[OSV.dev](https://osv.dev)** прямо во время сборки.
 
-## Описание
+**Репозиторий:** [github.com/timurzeksimbaev/vite-plugin-dtsbom](https://github.com/timurzeksimbaev/vite-plugin-dtsbom)
 
-Интеграция с «сборщиком Vite» выполняется через официальный API плагинов (Rollup `generateBundle`): отдельный форк репозитория Vite для диплома обычно не нужен — та же точка расширения, что использует сам Vite для сборки.
+---
 
-`vite-plugin-dtsbom` автоматически генерирует SBOM файлы для вашего проекта во время сборки Vite. По умолчанию список компонентов строится по **фактическому графу модулей Rollup** (после tree-shaking и разбиения на чанки), а не по полному `node_modules`. Плагин поддерживает два основных формата:
+## Возможности
 
-- **SPDX** (Software Package Data Exchange) - стандарт ISO/IEC 5962:2021
-- **CycloneDX** - формат OWASP для управления зависимостями и уязвимостями
+- **Два формата SBOM**: SPDX 2.3 (ISO/IEC 5962:2021) и CycloneDX 1.5 (OWASP стандарт)
+- **Анализ бандла**: список компонентов строится по фактическому графу модулей Rollup после tree-shaking — только то, что реально попало в сборку
+- **Живая проверка уязвимостей**: батч-запрос к [OSV.dev API](https://osv.dev) во время сборки; находит CVE/GHSA для каждого пакета с CVSS-баллом, описанием, версией фикса и ссылкой на адвизори
+- **HTML-отчёт**: наглядная страница со сводкой, таблицей пакетов и карточками CVE
+- **Расширенные метаданные**: описание, автор, ключевые слова, лицензия, ссылки на репозиторий из каждого `package.json`
+- **Безопасность по умолчанию**: файлы пишутся в `sbom/` вне `dist/`, не попадают в деплой и не занимают место в бандле; папка автоматически игнорируется Git через собственный `.gitignore`
+- **Надёжность**: если сеть недоступна — плагин продолжает работу без уязвимостей, сборка никогда не падает
+
+---
 
 ## Установка
 
 ```bash
 npm install --save-dev vite-plugin-dtsbom
-```
-
-или
-
-```bash
+# или
 yarn add -D vite-plugin-dtsbom
-```
-
-или
-
-```bash
+# или
 pnpm add -D vite-plugin-dtsbom
 ```
 
-**Peer dependency:** в проекте должен быть установлен **Vite 4–8** (см. `peerDependencies` в `package.json`). Если раньше `npm install` ругался на peer deps и помогал только `--legacy-peer-deps`, чаще всего причина в том, что в приложении стоял **Vite 7/8**, а в старой версии плагина в peer были только 4–6 — обнови плагин до **≥1.0.1**.
+**Требования:** Node.js ≥ 18, Vite 4–8.
 
-## Использование
+---
 
-### Базовое использование
+## Быстрый старт
 
 ```typescript
 // vite.config.ts
@@ -49,171 +49,218 @@ export default defineConfig({
 });
 ```
 
-### Расширенная конфигурация
+После `npm run build` файлы появятся в папке `sbom/` в корне проекта — **отдельно от `dist/`**:
 
-```typescript
-// vite.config.ts
-import { defineConfig } from 'vite';
-import vitePluginDtsbom from 'vite-plugin-dtsbom';
-
-export default defineConfig({
-  plugins: [
-    vitePluginDtsbom({
-      outputDir: 'dist',                    // Директория для сохранения SBOM файлов
-      spdx: true,                           // Генерировать SPDX формат
-      cyclonedx: true,                      // Генерировать CycloneDX формат
-      analysisMode: 'bundle',               // 'bundle' | 'packageGraph' (см. ниже)
-      includeDevDependencies: false,        // Только для packageGraph: dev зависимости
-      parseNodeModules: true,               // Только для packageGraph: парсить node_modules
-      includeTransitiveDependencies: true,  // Только для packageGraph: транзитивные
-      packageName: 'my-package',            // Кастомное имя пакета (опционально)
-      packageVersion: '1.0.0',             // Кастомная версия (опционально)
-    })
-  ]
-});
+```
+my-project/
+├── dist/                    # деплоится в прод, только JS/HTML/CSS
+│   ├── index.html
+│   └── assets/
+└── sbom/                    # SBOM и отчёт, НЕ попадают в деплой
+    ├── .gitignore           # создаётся автоматически, Git игнорирует папку
+    ├── sbom.spdx.json
+    ├── sbom.cyclonedx.json
+    └── sbom-report.html
 ```
 
-## Опции
+> **Почему не `dist/`?** SBOM раскрывает полный граф зависимостей — это ценная информация для Supply Chain атак. По умолчанию файлы пишутся за пределы build output, чтобы не уходить в продакшн и не раздувать бандл. При необходимости можно задать `outputDir: 'dist'`.
+
+> **`.gitignore` не нужно трогать вручную.** Плагин сам создаёт файл `sbom/.gitignore` с содержимым `*` при первой генерации — Git подхватывает его автоматически.
+
+---
+
+## Все опции
+
+```typescript
+vitePluginDtsbom({
+  // ── Выходные файлы ──────────────────────────────────────────────────────
+  outputDir: 'sbom',              // куда писать файлы (по умолчанию вне dist/)
+  spdx: true,                     // генерировать sbom.spdx.json
+  cyclonedx: true,                // генерировать sbom.cyclonedx.json
+  report: true,                   // генерировать sbom-report.html
+  reportFileName: 'sbom-report.html',
+
+  // ── Источник зависимостей ───────────────────────────────────────────────
+  analysisMode: 'bundle',         // 'bundle' | 'packageGraph'
+
+  // Только для analysisMode: 'packageGraph'
+  includeDevDependencies: false,
+  parseNodeModules: true,
+  includeTransitiveDependencies: true,
+
+  // ── Идентификация проекта ───────────────────────────────────────────────
+  packageName: undefined,         // по умолчанию берётся из package.json
+  packageVersion: undefined,
+
+  // ── Проверка уязвимостей ────────────────────────────────────────────────
+  fetchVulnerabilities: true,     // запрашивать OSV.dev при каждой сборке
+  vulnFetchTimeoutMs: 15000,      // таймаут запроса к OSV.dev (мс)
+})
+```
+
+### Таблица опций
 
 | Опция | Тип | По умолчанию | Описание |
-|-------|-----|--------------|----------|
-| `outputDir` | `string` | `'dist'` | Директория для сохранения SBOM файлов |
-| `spdx` | `boolean` | `true` | Генерировать SPDX формат |
-| `cyclonedx` | `boolean` | `true` | Генерировать CycloneDX формат |
-| `analysisMode` | `'bundle' \| 'packageGraph'` | `'bundle'` | **`bundle`**: только пакеты, чьи файлы попали в итоговый бандл; привязка к чанкам (CycloneDX `properties` `vite:outputChunks`, SPDX `comment`). **`packageGraph`**: прежнее поведение — обход `package.json` / `node_modules` |
-| `includeDevDependencies` | `boolean` | `false` | Только `packageGraph`: включать dev зависимости |
-| `parseNodeModules` | `boolean` | `true` | Только `packageGraph`: парсить node_modules |
-| `includeTransitiveDependencies` | `boolean` | `true` | Только `packageGraph`: транзитивные зависимости |
-| `packageName` | `string` | `undefined` | Кастомное имя пакета (если отличается от package.json) |
-| `packageVersion` | `string` | `undefined` | Кастомная версия (если отличается от package.json) |
+|---|---|---|---|
+| `outputDir` | `string` | `'sbom'` | Папка для SBOM и HTML-отчёта. По умолчанию вне `dist/` — не попадает в деплой |
+| `spdx` | `boolean` | `true` | Генерировать `sbom.spdx.json` |
+| `cyclonedx` | `boolean` | `true` | Генерировать `sbom.cyclonedx.json` |
+| `report` | `boolean` | `true` | Генерировать `sbom-report.html` |
+| `reportFileName` | `string` | `'sbom-report.html'` | Имя файла HTML-отчёта |
+| `analysisMode` | `'bundle' \| 'packageGraph'` | `'bundle'` | Источник списка зависимостей |
+| `includeDevDependencies` | `boolean` | `false` | Включать devDependencies (только `packageGraph`) |
+| `parseNodeModules` | `boolean` | `true` | Парсить `node_modules` (только `packageGraph`) |
+| `includeTransitiveDependencies` | `boolean` | `true` | Транзитивные зависимости (только `packageGraph`) |
+| `packageName` | `string` | из `package.json` | Переопределить имя корневого пакета |
+| `packageVersion` | `string` | из `package.json` | Переопределить версию корневого пакета |
+| `fetchVulnerabilities` | `boolean` | `true` | Запрашивать уязвимости с OSV.dev |
+| `vulnFetchTimeoutMs` | `number` | `15000` | Таймаут HTTP-запроса к OSV.dev (мс) |
 
-## Выходные файлы
+---
 
-После сборки проекта плагин создаст следующие файлы в указанной директории (`outputDir`):
+## Режимы анализа (`analysisMode`)
 
-- `sbom.spdx.json` - SBOM в формате SPDX 2.3
-- `sbom.cyclonedx.json` - SBOM в формате CycloneDX 1.5
+### `'bundle'` (рекомендуется, по умолчанию)
 
-## Примеры
+Плагин подключается к хуку Rollup `generateBundle` и обходит граф модулей **после tree-shaking**. В SBOM попадают только пакеты, чьи файлы реально присутствуют в итоговом бандле. Для каждого компонента сохраняется список выходных чанков, в которых он встречается (`vite:outputChunks`).
 
-### Генерация только SPDX
+### `'packageGraph'`
 
-```typescript
-vitePluginDtsbom({
-  spdx: true,
-  cyclonedx: false,
-})
-```
+Классический подход: читает `package.json` проекта и сканирует `node_modules`. Подходит для случаев, когда нужно учесть все установленные пакеты вне зависимости от tree-shaking.
 
-### Генерация только CycloneDX
+---
 
-```typescript
-vitePluginDtsbom({
-  spdx: false,
-  cyclonedx: true,
-})
-```
+## Проверка уязвимостей (OSV.dev)
 
-### Включение dev зависимостей
+При каждой сборке плагин выполняет **два шага**:
 
-```typescript
-vitePluginDtsbom({
-  includeDevDependencies: true,
-})
-```
+1. `POST /v1/querybatch` — один батч-запрос для всех пакетов, возвращает список ID уязвимостей
+2. `GET /v1/vulns/{id}` — параллельные запросы деталей по каждому уникальному ID
 
-### Только прямые зависимости (без парсинга node_modules)
+Итого: 2 «раунда» вместо N последовательных запросов. Для 50 пакетов с 20 уникальными CVE это занимает ~1–2 секунды.
 
-```typescript
-vitePluginDtsbom({
-  parseNodeModules: false,
-})
-```
+Для каждой найденной уязвимости записывается:
 
-### Парсинг node_modules без транзитивных зависимостей
+- Идентификатор CVE или GHSA
+- Уровень опасности: `critical` / `high` / `moderate` / `low`
+- CVSS v3 балл (вычисляется из вектора)
+- Заголовок и полное описание
+- Версия с исправлением (`fixedVersion`)
+- Идентификаторы CWE
+- Ссылка на адвизори (NVD или GitHub Security Advisories)
 
-```typescript
-vitePluginDtsbom({
-  parseNodeModules: true,
-  includeTransitiveDependencies: false,
-})
-```
+Если сеть недоступна или OSV.dev вернул ошибку — плагин выводит предупреждение и продолжает сборку без секции уязвимостей.
 
-## Парсинг node_modules
-
-По умолчанию плагин парсит директорию `node_modules` для получения:
-
-- **Реальных установленных версий** - вместо диапазонов версий из `package.json` (например, `^1.0.0` → `1.2.3`)
-- **Транзитивных зависимостей** - все зависимости ваших зависимостей
-- **Точной информации о лицензиях** - из реальных установленных пакетов
-- **Дополнительной метаинформации** - homepage, repository и т.д.
-
-Это важно для полноценного SBOM, так как:
-- `package.json` содержит только прямые зависимости с диапазонами версий
-- Реальные версии могут отличаться из-за разрешения зависимостей
-- Транзитивные зависимости не видны в `package.json`, но присутствуют в `node_modules`
-
-Если вы хотите включить только прямые зависимости из `package.json`, установите `parseNodeModules: false`.
+---
 
 ## Форматы SBOM
 
-### SPDX
+### CycloneDX 1.5
 
-Плагин генерирует SBOM в формате SPDX 2.3, который включает:
+Каждый компонент содержит:
 
-- Метаданные документа
-- Информацию о корневом пакете
-- Список всех зависимостей
-- Связи между пакетами (DEPENDS_ON)
-- Информацию о лицензиях
+```json
+{
+  "type": "library",
+  "bom-ref": "pkg:npm/moment@2.18.1",
+  "name": "moment",
+  "version": "2.18.1",
+  "description": "Parse, validate, manipulate, and display dates",
+  "author": "Iskren Ivov Chernev",
+  "purl": "pkg:npm/moment@2.18.1",
+  "licenses": [{ "license": { "id": "MIT" } }],
+  "externalReferences": [
+    { "type": "website", "url": "https://momentjs.com" },
+    { "type": "distribution", "url": "https://www.npmjs.com/package/moment/v/2.18.1" }
+  ],
+  "properties": [
+    { "name": "npm:keywords", "value": "moment, date, time" },
+    { "name": "vite:outputChunks", "value": "index-abc123.js" }
+  ]
+}
+```
 
-### CycloneDX
+Уязвимости выносятся в секцию верхнего уровня `vulnerabilities[]`:
 
-Плагин генерирует SBOM в формате CycloneDX 1.5, который включает:
+```json
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2022-24785",
+      "source": { "name": "NVD", "url": "https://nvd.nist.gov/vuln/detail/CVE-2022-24785" },
+      "ratings": [{ "score": 7.5, "severity": "high", "method": "CVSSv3" }],
+      "description": "Path Traversal in moment.locale()",
+      "detail": "Moment.js before 2.29.2 is vulnerable to path traversal...",
+      "recommendation": "Upgrade to version 2.29.2 or later.",
+      "cwes": [22],
+      "advisories": [{ "url": "https://nvd.nist.gov/vuln/detail/CVE-2022-24785" }],
+      "affects": [{ "ref": "pkg:npm/moment@2.18.1" }]
+    }
+  ]
+}
+```
 
-- Метаданные с информацией о инструменте
-- Корневой компонент приложения
-- Компоненты зависимостей
-- PURL (Package URL) для каждой зависимости
-- Информацию о лицензиях
+### SPDX 2.3
 
-## Требования
+Каждый пакет содержит:
 
-- Node.js >= 16.0.0
-- Vite >= 4.0.0 или >= 5.0.0
+- `purl` в `externalRefs` с категорией `PACKAGE-MANAGER`
+- Для уязвимых пакетов — `externalRefs` с категорией `SECURITY` (`referenceType: "cve"` или `"advisory"`) и комментарием об уровне опасности и версии фикса
+- `description`, `supplier` (автор), `downloadLocation` (ссылка на тарбол в npm registry)
+- Секция `annotations[]` с `REVIEW`-аннотациями для каждой CVE
+- `creationInfo.comment` — общая сводка по найденным уязвимостям
 
-## Лицензия
+---
 
-MIT
+## HTML-отчёт
+
+Самодостаточный HTML-файл (без внешних зависимостей, работает офлайн). Содержит:
+
+- **Сводка**: карточки — всего пакетов / уязвимостей / затронутых пакетов / по каждому severity
+- **Таблица пакетов**: сортировка по уровню уязвимости; уязвимые строки подсвечены, отображаются название, описание, версия, лицензия, ссылка
+- **Карточки CVE**: severity-бейдж, CVSS-шкала с числовым баллом, заголовок, полное описание, затронутый пакет, версия фикса, CWE-ссылки, кнопка «View advisory»
+
+---
+
+## Вывод при сборке
+
+```
+[vite-plugin-dtsbom] Checking 12 package(s) against OSV.dev…
+[vite-plugin-dtsbom] ⚠  Found 10 known vulnerabilities in 4 package(s): axios@1.14.0, lodash-es@4.17.23, moment@2.18.1, serialize-javascript@3.0.0
+[vite-plugin-dtsbom] Generated SPDX SBOM:      sbom/sbom.spdx.json
+[vite-plugin-dtsbom] Generated CycloneDX SBOM: sbom/sbom.cyclonedx.json
+[vite-plugin-dtsbom] Generated HTML report:    sbom/sbom-report.html
+```
+
+---
 
 ## Разработка
 
 ```bash
-# Установка зависимостей (в корне пакета `vite` нет в devDependencies — типы плагина не привязаны к копии Vite в этом репозитории)
+# 1. Собрать плагин (TypeScript → dist/)
+cd vite-plugin-dtsbom
 npm install
-
-# Сборка проекта
 npm run build
 
-# Режим разработки с watch
+# 2. Запустить пример — сгенерирует SBOM + HTML-отчёт
+cd example
+npm install
+npm run build
+# Результат: example/sbom/
+
+# Режим watch — пересборка плагина при изменениях src/
+cd vite-plugin-dtsbom
 npm run dev
 ```
 
-### TypeScript: «две копии Vite» / `Plugin` не совместим с `PluginOption`
+При использовании `file:..` линковки TypeScript может видеть две копии `vite` в `node_modules`. Скрипт `postinstall` в `example/` убирает вложенный `node_modules/vite-plugin-dtsbom/node_modules/vite` автоматически. Если проблема остаётся — в `vite.config.ts` добавьте `as PluginOption[]`:
 
-Если при линковке через `file:..` в `vite-plugin-dtsbom/node_modules` осталась старая папка `vite`, TypeScript видит два разных типа `Plugin`. Удалите вложенный `vite` или переустановите зависимости; в примере `example/` после `npm install` скрипт `postinstall` пытается убрать `node_modules/vite-plugin-dtsbom/node_modules/vite` автоматически. В крайнем случае в `vite.config.ts` можно задать `plugins: [...] as import('vite').PluginOption[]`.
-
-## Публикация в npm
-
-```bash
-# Сборка проекта
-npm run build
-
-# Публикация
-npm publish
+```typescript
+plugins: [react(), vitePluginDtsbom()] as PluginOption[]
 ```
 
-## Поддержка
+---
 
-Если вы нашли баг или у вас есть предложение, пожалуйста, создайте issue в репозитории проекта.
+## Лицензия
 
+MIT — © Timur Zheksimbaev

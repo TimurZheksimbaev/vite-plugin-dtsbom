@@ -24,15 +24,17 @@ function toFsPath(moduleId: string): string | null {
 
 /**
  * Walk up from a module file path until a package.json with name+version is found.
+ * Returns a rich metadata object with all available fields.
  */
-export function readPackageMetaFromModulePath(
-  modulePath: string
-): {
+export function readPackageMetaFromModulePath(modulePath: string): {
   name: string;
   version: string;
+  description?: string;
   license?: string;
+  author?: string;
   homepage?: string;
   repository?: string;
+  keywords?: string[];
 } | null {
   let dir = dirname(modulePath);
   for (let depth = 0; depth < 40; depth++) {
@@ -42,25 +44,38 @@ export function readPackageMetaFromModulePath(
         const pkg = JSON.parse(readFileSync(pj, 'utf-8')) as {
           name?: string;
           version?: string;
+          description?: string;
           license?: string | { type?: string };
+          author?: string | { name?: string; email?: string; url?: string };
           homepage?: string;
           repository?: string | { url?: string };
+          keywords?: string[];
         };
         if (pkg.name && pkg.version) {
           const license =
-            typeof pkg.license === 'string'
-              ? pkg.license
-              : pkg.license?.type;
+            typeof pkg.license === 'string' ? pkg.license : pkg.license?.type;
+
           const repository =
-            typeof pkg.repository === 'string'
-              ? pkg.repository
-              : pkg.repository?.url;
+            typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url;
+
+          const author =
+            typeof pkg.author === 'string'
+              ? pkg.author
+              : pkg.author?.name
+                ? [pkg.author.name, pkg.author.email, pkg.author.url]
+                    .filter(Boolean)
+                    .join(' ')
+                : undefined;
+
           return {
             name: pkg.name,
             version: pkg.version,
+            description: pkg.description,
             license,
+            author,
             homepage: pkg.homepage,
             repository,
+            keywords: Array.isArray(pkg.keywords) ? pkg.keywords : undefined,
           };
         }
       } catch {
@@ -104,9 +119,12 @@ export function collectBundleDependencies(
       name: meta.name,
       version: meta.version,
       type: 'dependencies',
+      description: meta.description,
       license: meta.license || getLicenseInfo(meta.name, root),
+      author: meta.author,
       homepage: meta.homepage,
       repository: meta.repository,
+      keywords: meta.keywords,
     };
     const key = dependencyKey(dep);
     if (!keyToDep.has(key)) {
