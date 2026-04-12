@@ -2,8 +2,8 @@ name: Publish to npm
 
 on:
   push:
-    tags:
-      - 'v*.*.*'   # triggers on v1.0.3, v2.1.0, etc.
+    branches:
+      - main
 
 permissions:
   id-token: write  # Required for OIDC trusted publishing (no NPM_TOKEN needed)
