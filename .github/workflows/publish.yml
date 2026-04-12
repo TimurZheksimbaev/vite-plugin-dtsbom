@@ -19,9 +19,8 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-
+      
       - run: npm ci
-      - run: npm run build
-
-      - name: Publish to npm (OIDC, no token required)
-        run: npm publish --access public --provenance
+      - run: npm run build --if-present
+      - run: npm test
+      - run: npm publish
