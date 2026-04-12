@@ -13,6 +13,10 @@ concurrency:
   group: publish
   cancel-in-progress: false
 
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
+
 jobs:
   publish:
     name: Bump version & publish
